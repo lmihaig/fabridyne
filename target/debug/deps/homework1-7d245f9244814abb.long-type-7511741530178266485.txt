@@ -1,0 +1,1 @@
+std::collections::VecDeque<simulator::IntegerQueueEntry>: std::convert::From<std::vec::Vec<std::option::Option<_>>>
