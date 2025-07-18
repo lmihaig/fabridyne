@@ -1,1 +1,0 @@
-/home/lmg/Documents/Code/msc/Sem2/ACA/HW1/target/debug/homework1: /home/lmg/Documents/Code/msc/Sem2/ACA/HW1/src/json_io.rs /home/lmg/Documents/Code/msc/Sem2/ACA/HW1/src/main.rs /home/lmg/Documents/Code/msc/Sem2/ACA/HW1/src/simulator.rs

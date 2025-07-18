@@ -26,11 +26,8 @@ fn main() {
     sim.dump_state_into_log();
 
     // 2. Cycle-by-cycle simulation loop.
-    // The loop continues until there are no more instructions and the active list is empty.
     while !sim.done() {
-        // Simulate one full cycle in reverse order
         sim.simulate_cycle();
-        // Dump the state.
         sim.dump_state_into_log();
     }
 
