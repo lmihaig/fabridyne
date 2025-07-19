@@ -9,8 +9,8 @@ from typing import List, Any
 
 # --- Configuration ---
 TEST_DIR = "given_tests"
-BUILD_COMMAND = ["cargo", "build", "--quiet"]
-SIMULATOR_EXECUTABLE = os.path.join("target", "debug", "ooo470")
+BUILD_COMMAND = ["cargo", "build", "--release"]
+SIMULATOR_EXECUTABLE = os.path.join("target", "release", "ooo470")
 
 INPUT_FILENAME = "input.json"
 REFERENCE_OUTPUT_FILENAME = "output.json"
@@ -96,7 +96,7 @@ def compare_outputs(expected_file: str, actual_file: str) -> List[str]:
         return [f"File not found: {e}"]
 
 
-def run_single_test(test_dir: str) -> bool:
+def run_single_test(test_dir: str, debug: bool) -> bool:
     """
     Runs a single test case located in its own directory.
 
@@ -123,7 +123,10 @@ def run_single_test(test_dir: str) -> bool:
         )
 
     # Run the simulator
-    run_command = [SIMULATOR_EXECUTABLE, input_json, user_output_json]
+    executable = SIMULATOR_EXECUTABLE
+    if debug:
+        executable = executable.replace("release", "debug")
+    run_command = [executable, input_json, user_output_json]
     try:
         subprocess.run(
             run_command, check=True, capture_output=True, text=True, timeout=10
@@ -152,64 +155,103 @@ def run_single_test(test_dir: str) -> bool:
 
 def main():
     parser = argparse.ArgumentParser(description="Build and run simulator tests.")
-    parser.add_argument(
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # --- Build Command ---
+    build_parser = subparsers.add_parser("build", help="Build the simulator.")
+    build_parser.add_argument("--debug", action="store_true", help="Build in debug mode.")
+
+    # --- Run Command ---
+    run_parser = subparsers.add_parser("run", help="Run the simulator.")
+    run_parser.add_argument("input", help="The input JSON file.")
+    run_parser.add_argument("output", help="The output JSON file.")
+    run_parser.add_argument("--debug", action="store_true", help="Run the debug build.")
+
+    # --- Test Command ---
+    test_parser = subparsers.add_parser("test", help="Run tests.")
+    test_parser.add_argument(
         "test_number",
         nargs="?",
         type=int,
         help="The number of a specific test to run (e.g., '1' for the first test found). If not provided, all tests run.",
     )
+    test_parser.add_argument("--debug", action="store_true", help="Run tests with the debug build.")
+
     args = parser.parse_args()
 
-    print("--- Building Simulator ---")
-    try:
-        # Using --quiet to keep the build output clean
-        subprocess.run(BUILD_COMMAND, check=True, capture_output=True, text=True)
-        print("✅ Build successful!")
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Build Failed!\n   Error: {e.stderr.strip()}", file=sys.stderr)
-        sys.exit(1)
-
-    try:
-        # Discover tests by finding subdirectories in TEST_DIR
-        test_dirs = sorted(
-            [
-                os.path.join(TEST_DIR, d)
-                for d in os.listdir(TEST_DIR)
-                if os.path.isdir(os.path.join(TEST_DIR, d))
-            ]
-        )
-        if not test_dirs:
-            print(f"⚠️ No test directories found in '{TEST_DIR}'.", file=sys.stderr)
+    if args.command == "build":
+        print("--- Building Simulator ---")
+        build_command = BUILD_COMMAND
+        if args.debug:
+            build_command = ["cargo", "build"]
+        try:
+            # Using --quiet to keep the build output clean
+            subprocess.run(build_command, check=True, capture_output=True, text=True)
+            print("✅ Build successful!")
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Build Failed!\n   Error: {e.stderr.strip()}", file=sys.stderr)
             sys.exit(1)
-    except FileNotFoundError:
-        print(f"❌ Error: Test directory '{TEST_DIR}' not found.", file=sys.stderr)
-        sys.exit(1)
 
-    if args.test_number is not None:
-        if not (1 <= args.test_number <= len(test_dirs)):
-            print(
-                f"❌ Error: Test number {args.test_number} is out of range.",
-                file=sys.stderr,
+    elif args.command == "run":
+        executable = SIMULATOR_EXECUTABLE
+        if args.debug:
+            executable = executable.replace("release", "debug")
+        run_command = [executable, args.input, args.output]
+        try:
+            subprocess.run(
+                run_command, check=True, capture_output=True, text=True, timeout=10
             )
-            print(f"   Available tests: 1 to {len(test_dirs)}", file=sys.stderr)
+        except subprocess.TimeoutExpired:
+            print(f"❌ Simulator timed out after 10 seconds.")
             sys.exit(1)
-        run_single_test(test_dirs[args.test_number - 1])
-    else:
-        print("\n--- Running All Tests ---")
-        passed_count = 0
-        failed_tests = []
-        for test_dir in test_dirs:
-            if run_single_test(test_dir):
-                passed_count += 1
-            else:
-                failed_tests.append(os.path.basename(test_dir))
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Simulator exited with error code {e.returncode}.")
+            print(f"   Stdout: {e.stdout.strip()}")
+            print(f"   Stderr: {e.stderr.strip()}")
+            sys.exit(1)
 
-        print("\n--- Summary ---")
-        print(f"Passed: {passed_count}/{len(test_dirs)}")
-        if failed_tests:
-            print("Failed tests:")
-            for test in failed_tests:
-                print(f"  - {test}")
+    elif args.command == "test":
+        try:
+            # Discover tests by finding subdirectories in TEST_DIR
+            test_dirs = sorted(
+                [
+                    os.path.join(TEST_DIR, d)
+                    for d in os.listdir(TEST_DIR)
+                    if os.path.isdir(os.path.join(TEST_DIR, d))
+                ]
+            )
+            if not test_dirs:
+                print(f"⚠️ No test directories found in '{TEST_DIR}'.", file=sys.stderr)
+                sys.exit(1)
+        except FileNotFoundError:
+            print(f"❌ Error: Test directory '{TEST_DIR}' not found.", file=sys.stderr)
+            sys.exit(1)
+
+        if args.test_number is not None:
+            if not (1 <= args.test_number <= len(test_dirs)):
+                print(
+                    f"❌ Error: Test number {args.test_number} is out of range.",
+                    file=sys.stderr,
+                )
+                print(f"   Available tests: 1 to {len(test_dirs)}", file=sys.stderr)
+                sys.exit(1)
+            run_single_test(test_dirs[args.test_number - 1], args.debug)
+        else:
+            print("\n--- Running All Tests ---")
+            passed_count = 0
+            failed_tests = []
+            for test_dir in test_dirs:
+                if run_single_test(test_dir, args.debug):
+                    passed_count += 1
+                else:
+                    failed_tests.append(os.path.basename(test_dir))
+
+            print("\n--- Summary ---")
+            print(f"Passed: {passed_count}/{len(test_dirs)}")
+            if failed_tests:
+                print("Failed tests:")
+                for test in failed_tests:
+                    print(f"  - {test}")
 
 
 if __name__ == "__main__":
